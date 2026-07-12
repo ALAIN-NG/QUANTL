@@ -10,41 +10,57 @@ class CompilerBridgeError(Exception):
 class CompilerBridge:
     def __init__(self, chemin_compilateur=None):
         if chemin_compilateur is None:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            # BUGFIX (résolution du binaire qcompile) : l'ancienne liste de
+            # candidats se terminait par un chemin ABSOLU codé en dur,
+            # spécifique à la machine de développement d'origine
+            # ("/home/alain/.../bin/qcompile"). Cela signifie que si aucun
+            # des chemins relatifs plausibles n'existait (par exemple juste
+            # après avoir décompressé une copie fraîche du projet ailleurs,
+            # ou avant d'avoir lancé `make` dans CETTE copie), la recherche
+            # retombait silencieusement sur l'exécutable de l'ANCIEN
+            # répertoire de travail — potentiellement un binaire obsolète,
+            # construit avant des corrections ultérieures du compilateur.
+            # Aucune erreur n'était levée : le mauvais binaire était utilisé
+            # sans avertissement, ce qui pouvait faire réapparaître des bugs
+            # pourtant déjà corrigés dans les sources actuelles. On ne
+            # considère désormais que des chemins RELATIFS à l'emplacement
+            # réel de ce fichier (donc à la copie du projet réellement en
+            # cours d'exécution), sans aucun repli propre à une machine
+            # particulière.
+            gui_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            project_root = os.path.dirname(gui_dir)
             possible_paths = [
-                os.path.join(base_dir, "..", "bin", "qcompile"),
-                os.path.join(base_dir, "..", "qcompile"),
+                os.path.join(project_root, "bin", "qcompile"),
+                os.path.join(project_root, "qcompile"),
                 os.path.join(os.getcwd(), "bin", "qcompile"),
                 os.path.join(os.getcwd(), "qcompile"),
-                os.path.join(base_dir, "bin", "qcompile"),
-                "/home/alain/Documents/WorkSpaces/quantl/bin/qcompile",
             ]
-            
+
+            self.chemin_compilateur = None
             for path in possible_paths:
                 abs_path = os.path.abspath(path)
                 if os.path.exists(abs_path) and os.access(abs_path, os.X_OK):
                     self.chemin_compilateur = abs_path
                     break
-            else:
-                self.chemin_compilateur = os.path.abspath(
-                    os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "bin", "qcompile")
-                )
+
+            if self.chemin_compilateur is None:
+                # Aucun binaire valide trouvé : on fixe un chemin par défaut
+                # explicite (celui attendu après un `make` à la racine du
+                # projet) afin que _verifier_compilateur() lève un message
+                # d'erreur clair et actionnable, plutôt que d'utiliser un
+                # binaire non lié à cette copie du projet.
+                self.chemin_compilateur = os.path.join(project_root, "bin", "qcompile")
         else:
             self.chemin_compilateur = chemin_compilateur
-        
+
         self._verifier_compilateur()
-    
+
     def _verifier_compilateur(self):
         if not os.path.exists(self.chemin_compilateur):
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            alt_path = os.path.join(base_dir, "..", "bin", "qcompile")
-            if os.path.exists(alt_path) and os.access(alt_path, os.X_OK):
-                self.chemin_compilateur = alt_path
-                return
-            
             raise CompilerBridgeError(
                 f"Compilateur '{self.chemin_compilateur}' non trouvé.\n"
-                "Vérifiez que vous avez compilé le projet avec 'make'."
+                "Vérifiez que vous avez compilé le projet avec 'make' "
+                "à la racine du dépôt (le binaire est attendu dans bin/qcompile)."
             )
         if not os.access(self.chemin_compilateur, os.X_OK):
             raise CompilerBridgeError(
@@ -55,35 +71,55 @@ class CompilerBridge:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.qtl', delete=False, encoding='utf-8') as f:
             f.write(source_code)
             temp_file = f.name
-        
+
+        # BUGFIX (export QASM) : le compilateur qcompile écrit son fichier
+        # QASM par défaut sous le nom relatif "output.qasm", donc dans le
+        # RÉPERTOIRE COURANT (cwd) du processus au moment de l'exécution —
+        # cwd qui dépend d'où l'utilisateur a lancé l'appli GUI (souvent
+        # gui/), et n'a AUCUN rapport avec l'emplacement du binaire
+        # qcompile. L'ancien code reconstruisait pourtant le chemin attendu
+        # à partir de `self.chemin_compilateur` (deux niveaux au-dessus du
+        # binaire), un chemin qui ne correspondait presque jamais au fichier
+        # réellement écrit. Résultat : resultat["qasm"] restait vide, l'onglet
+        # QASM affichait le texte de substitution, et "Valider la syntaxe"
+        # rapportait à tort 'OPENQASM manquante' et 'include qelib1.inc
+        # manquant'. On force maintenant un chemin de sortie ABSOLU et
+        # unique via --output, à côté du fichier source temporaire, et on
+        # relit exactement ce chemin : aucune dépendance au cwd.
+        qasm_path = temp_file[:-len('.qtl')] + '.qasm' if temp_file.endswith('.qtl') else temp_file + '.qasm'
+
         try:
-            cmd = [self.chemin_compilateur, "--source", temp_file, "--mode", mode, "--debug"]
+            cmd = [
+                self.chemin_compilateur, "--source", temp_file,
+                "--mode", mode, "--debug", "--output", qasm_path
+            ]
             if shots > 1:
                 cmd.extend(["--shots", str(shots)])
             if seed is not None:
                 cmd.extend(["--seed", str(seed)])
-            
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=30
             )
-            
-            return self._parser_sortie(result.stdout, result.stderr, mode)
-            
+
+            return self._parser_sortie(result.stdout, result.stderr, mode, qasm_path)
+
         except subprocess.TimeoutExpired:
             raise CompilerBridgeError("Timeout: la compilation a pris trop de temps.")
         except Exception as e:
             raise CompilerBridgeError(f"Erreur lors de l'exécution: {str(e)}")
         finally:
-            if os.path.exists(temp_file):
-                try:
-                    os.unlink(temp_file)
-                except:
-                    pass
+            for path in (temp_file, qasm_path):
+                if os.path.exists(path):
+                    try:
+                        os.unlink(path)
+                    except:
+                        pass
     
-    def _parser_sortie(self, stdout, stderr, mode):
+    def _parser_sortie(self, stdout, stderr, mode, qasm_path=None):
         """Parse la sortie du compilateur"""
         resultat = {
             "statut": "ok" if not stderr or "Erreur" not in stderr else "erreur",
@@ -227,12 +263,14 @@ class CompilerBridge:
                     resultat["erreurs"].append(line)
         
         # --- 7. Extraire le QASM ---
-        qasm_path = os.path.join(os.path.dirname(os.path.dirname(self.chemin_compilateur)), "output.qasm")
-        if os.path.exists(qasm_path):
+        # On relit strictement le chemin passé à qcompile via --output
+        # (voir bugfix dans executer()) : plus aucune reconstruction de
+        # chemin approximative basée sur l'emplacement du binaire.
+        if qasm_path and os.path.exists(qasm_path):
             try:
                 with open(qasm_path, 'r', encoding='utf-8') as f:
                     resultat["qasm"] = f.read()
-            except:
+            except OSError:
                 pass
         
         return resultat

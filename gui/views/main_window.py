@@ -309,7 +309,20 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Avertissement", "Le code est vide.")
             return
         self.editor_tab.clear_highlights()
-        self.controller.compile(code, mode="sim")
+        # BUGFIX (export QASM) : cette action est câblée sur le bouton
+        # "Compiler" du menu, de la barre d'outils ET du raccourci de
+        # l'éditeur (compile_requested) — c'est donc le chemin de
+        # compilation PRINCIPAL. Elle forçait auparavant mode="sim", qui
+        # demande à qcompile de NE PAS générer de code QASM du tout (voir
+        # main.c : la génération QASM n'a lieu que si mode == "qasm" ou
+        # "both"). Or _on_compilation_finished() met à jour l'onglet QASM
+        # après CHAQUE compilation, quel que soit le mode demandé : après un
+        # clic sur "Compiler", l'onglet QASM affichait donc systématiquement
+        # son texte de substitution (aucun code généré), et "Valider la
+        # syntaxe" rapportait à tort 'OPENQASM manquante' / 'qelib1.inc
+        # manquant'. On utilise donc "both" ici afin que la simulation ET
+        # l'export QASM soient toujours disponibles après une compilation.
+        self.controller.compile(code, mode="both")
 
     def _relancer_simulation(self, shots=10, seed=42):
         code = self.editor_tab.get_code()
