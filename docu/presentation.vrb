@@ -1,0 +1,13 @@
+\frametitle{Chaîne de build (Makefile)}
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize]
+quantl.y --(bison -d -v)--> quantl.tab.c / quantl.tab.h
+quantl.l --(flex)---------> quantl.yy.c
+*.c       --(gcc -std=c11 -Wall -Wextra -O2)--> build/*.o
+build/*.o --(gcc, -lm)--------------------------> bin/qcompile
+\end{lstlisting}
+  \begin{itemize}
+    \small
+    \item Compilation stricte : \texttt{-Wall -Wextra -std=c11}, liaison avec \texttt{libm} (fonctions trigonométriques/complexes).
+    \item Cible \texttt{make test} exécute automatiquement les trois programmes de référence (\texttt{bell.qtl}, \texttt{ghz.qtl}, \texttt{deutsch.qtl}) avec une graine fixe (\texttt{--seed 12345}) pour des résultats reproductibles.
+    \item Cibles \texttt{clean} / \texttt{distclean} pour la suppression des artefacts générés (\texttt{.o}, binaire, fichiers Bison/Flex intermédiaires, \texttt{.qasm}).
+  \end{itemize}

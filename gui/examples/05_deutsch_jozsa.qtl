@@ -1,0 +1,29 @@
+// Test 5 - Algorithme de Deutsch-Jozsa (fonction balancee f(x0,x1)=x0 XOR x1)
+// Niveau : intermediaire+ (oracle multi-qubit, if conditionnel sur resultat de mesure)
+qreg q[3];
+creg c[2];
+
+x q[2];
+h q[0];
+h q[1];
+h q[2];
+
+barrier q[0], q[1], q[2];
+
+// Oracle balancee : f(x0,x1) = x0 XOR x1 (kickback de phase)
+cx q[0], q[2];
+cx q[1], q[2];
+
+barrier q[0], q[1], q[2];
+
+h q[0];
+h q[1];
+
+measure q[0] -> c[0];
+measure q[1] -> c[1];
+
+// Si les deux bits sont a 0 -> fonction constante ; sinon -> balancee
+if (c[0] == 0) print state;
+if (c[1] == 1) print state;
+
+print probs;

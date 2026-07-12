@@ -1,0 +1,30 @@
+// Test 7 - Teleportation quantique avec corrections classiques
+// Niveau : avance (protocole complet, mesures + corrections conditionnelles)
+qreg q[3];
+creg c[3];
+
+// Etat arbitraire a teleporter, prepare sur q[0]
+rx q[0](0.9);
+rz q[0](0.4);
+
+// Paire de Bell partagee : q[1] (Alice) / q[2] (Bob)
+h q[1];
+cx q[1], q[2];
+
+barrier q[0], q[1], q[2];
+
+// Mesure de Bell cote Alice sur (q[0], q[1])
+cx q[0], q[1];
+h q[0];
+
+measure q[0] -> c[0];
+measure q[1] -> c[1];
+
+// Corrections classiques appliquees par Bob sur q[2]
+if (c[1] == 1) x q[2];
+if (c[0] == 1) z q[2];
+
+print state;
+
+measure q[2] -> c[2];
+print probs;

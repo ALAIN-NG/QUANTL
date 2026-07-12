@@ -1,0 +1,34 @@
+// Test 8 - Algorithme de Grover (recherche de l'etat marque |11>, 2 qubits, 1 iteration)
+// Niveau : avance (oracle + diffuseur, amplification d'amplitude)
+qreg q[2];
+creg c[2];
+
+h q[0];
+h q[1];
+
+barrier q[0], q[1];
+
+// Oracle : inverse la phase de l'etat marque |11>
+cz q[0], q[1];
+
+barrier q[0], q[1];
+
+// Diffuseur de Grover (inversion autour de la moyenne)
+h q[0];
+h q[1];
+x q[0];
+x q[1];
+cz q[0], q[1];
+x q[0];
+x q[1];
+h q[0];
+h q[1];
+
+barrier q[0], q[1];
+
+measure q[0] -> c[0];
+measure q[1] -> c[1];
+
+print probs;
+
+if (c[0] == 1) if (c[1] == 1) print state;

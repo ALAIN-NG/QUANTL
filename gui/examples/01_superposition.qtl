@@ -1,0 +1,7 @@
+// Test 1 - Superposition simple d'un qubit
+// Niveau : trivial (1 qubit, 1 porte)
+qreg q[1];
+
+h q[0];
+
+print state;

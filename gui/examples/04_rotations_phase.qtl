@@ -1,0 +1,18 @@
+// Test 4 - Portes de rotation (rx, ry, rz) et de phase (s, t)
+// Niveau : intermediaire (angles, mix de portes 1Q parametrees et non parametrees)
+qreg q[2];
+creg c[2];
+
+h q[0];
+rz q[0](1.57079632679);   // pi/2
+ry q[1](0.78539816340);   // pi/4
+s q[0];
+t q[1];
+cx q[0], q[1];
+
+print state;
+
+measure q[0] -> c[0];
+measure q[1] -> c[1];
+
+print probs;

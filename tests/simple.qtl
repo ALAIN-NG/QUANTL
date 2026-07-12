@@ -1,0 +1,3 @@
+qreg q[1];
+h q[0];
+print state;
